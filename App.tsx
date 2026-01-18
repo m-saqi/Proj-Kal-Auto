@@ -1,5 +1,5 @@
 import React from 'react';
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
 import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
@@ -13,8 +13,8 @@ import { About } from './pages/About';
 const App = () => {
   return (
     <AppProvider>
-      <HashRouter>
-        {/* ScrollToTop must be inside HashRouter to access location context */}
+      <MemoryRouter>
+        {/* ScrollToTop must be inside MemoryRouter to access location context */}
         <ScrollToTop />
         <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans transition-colors duration-300">
           <Navbar />
@@ -31,7 +31,7 @@ const App = () => {
           <Footer />
           <BottomNav />
         </div>
-      </HashRouter>
+      </MemoryRouter>
     </AppProvider>
   );
 };

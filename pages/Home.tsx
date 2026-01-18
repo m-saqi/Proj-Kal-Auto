@@ -187,7 +187,7 @@ export const Home = () => {
 const FeatureCard = ({ icon, title, desc }: { icon: React.ReactNode, title: string, desc: string }) => (
   <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm hover:shadow-xl transition-all duration-300 group">
     <div className="w-12 h-12 bg-slate-50 dark:bg-slate-800 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-brand-50 transition-all">
-      {React.cloneElement(icon as React.ReactElement, { size: 24 })}
+      {React.cloneElement(icon as React.ReactElement<any>, { size: 24 })}
     </div>
     <h3 className="text-base md:text-lg font-black text-slate-900 dark:text-white mb-3 tracking-tight">{title}</h3>
     <p className="text-slate-500 dark:text-slate-400 text-[11px] md:text-sm leading-relaxed font-medium">{desc}</p>
