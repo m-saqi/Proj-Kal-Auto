@@ -21,7 +21,7 @@ export interface Course {
   isDeleted: boolean;
   isCustom: boolean;
   originalSemester?: string;
-  source?: 'lms' | 'attendance';
+  source?: 'lms' | 'attendance'; // NEW
 }
 
 export interface Semester {
@@ -43,7 +43,7 @@ export interface Profile {
   studentInfo: StudentInfo;
   semesters: Record<string, Semester>;
   courseHistory: Record<string, any>; // Simplified for internal logic
-  bedMode: boolean;
+  bedMode?: boolean; // NEW
   createdAt: string;
   lastModified: string;
 }
