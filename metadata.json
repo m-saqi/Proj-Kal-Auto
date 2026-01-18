@@ -1,0 +1,5 @@
+{
+  "name": "UAF CGPA Calculator",
+  "description": "A modern, responsive, and accurate CGPA calculator for UAF students with automatic result fetching, forecasting, and PDF export.",
+  "requestFramePermissions": []
+}
