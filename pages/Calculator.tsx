@@ -1,270 +1,290 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { calculateCGPA, getSemesterOrderKey } from '../utils/gpa';
 import { CgpaDial } from '../components/calculator/CgpaDial';
 import { SemesterList } from '../components/calculator/SemesterList';
 import { Button } from '../components/ui/Button';
-import { useNavigate } from 'react-router-dom';
 import { 
-  Plus, Download, LineChart, Search, Loader2, ArrowLeft, 
-  History, Settings2, Sparkles, RefreshCcw, TrendingUp 
+  Download, LineChart, Search, Loader2, Sparkles, RefreshCcw, Lock
 } from 'lucide-react';
-import { 
-  LineChart as RechartsLine, Line, XAxis, YAxis, Tooltip, 
-  ResponsiveContainer, CartesianGrid 
-} from 'recharts';
+import { fetchResults } from '../services/api';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Semester } from '../types';
-import { fetchResults } from '../services/api';
+import { Profile, Course } from '../types';
+
+// Password Map for Restricted Access
+const RESTRICTED_MAP: Record<string, string> = {
+    '2020-ag-9423': 'am9rZXI5MTE=', // Base64 for 'joker911'
+    '2019-ag-8136': 'bWlzczkxMQ=='
+};
 
 export const Calculator = () => {
-  const { activeProfile, setActiveProfile, saveProfile, isLoading, setIsLoading } = useApp();
-  const navigate = useNavigate();
-  const [showChart, setShowChart] = useState(false);
+  const { activeProfile, saveProfile, setActiveProfile, isLoading, setIsLoading } = useApp();
   const [regNum, setRegNum] = useState('');
-  const [error, setError] = useState('');
+  const [passKey, setPassKey] = useState('');
+  const [showPassModal, setShowPassModal] = useState(false);
+  const [activeTab, setActiveTab] = useState<'normal' | 'bed'>('normal');
+  const [showAttendanceModal, setShowAttendanceModal] = useState(false);
+  const [attendanceCourses, setAttendanceCourses] = useState<any[]>([]);
 
-  const handleFetch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!regNum.trim()) return;
-    setIsLoading(true);
-    setError('');
-    try {
-      const profile = await fetchResults(regNum);
-      if (profile) {
-        saveProfile(profile);
-        setRegNum('');
+  // B.Ed Courses Set
+  const BED_COURSES = new Set(['EDU-501', 'EDU-502', 'EDU-601']); 
+
+  const handleSearch = (e: React.FormEvent) => {
+      e.preventDefault();
+      const id = regNum.toLowerCase().trim();
+      if(RESTRICTED_MAP[id]) {
+          setShowPassModal(true);
       } else {
-        setError('Record not found. Use format: 2021-ag-1234');
+          performFetch(regNum);
       }
-    } catch (err) {
-      setError('UAF LMS Connection Failed. Please try again.');
+  };
+
+  const verifyPassKey = () => {
+      const id = regNum.toLowerCase().trim();
+      if(btoa(passKey) === RESTRICTED_MAP[id]) {
+          setShowPassModal(false);
+          performFetch(regNum);
+      } else {
+          alert("Invalid Pass Key");
+      }
+  };
+
+  const performFetch = async (id: string) => {
+    setIsLoading(true);
+    try {
+        const profile = await fetchResults(id);
+        if(profile) {
+            // Check for B.Ed courses
+            const hasBed = Object.values(profile.semesters).some(s => 
+                s.courses.some(c => BED_COURSES.has(c.code))
+            );
+            if(hasBed && confirm("B.Ed courses detected. Separate B.Ed result?")) {
+                profile.bedMode = true;
+                setActiveTab('bed');
+            }
+            saveProfile(profile);
+        } else {
+            alert("No result found");
+        }
+    } catch(e) {
+        alert("Connection Failed");
     } finally {
-      setIsLoading(false);
+        setIsLoading(false);
     }
   };
 
-  const handleAddForecast = () => {
-    if (!activeProfile) return;
-    const newProfile = { ...activeProfile };
-    let count = 1;
-    while(newProfile.semesters[`Forecast ${count}`]) count++;
-    const name = `Forecast ${count}`;
-    
-    newProfile.semesters[name] = {
-        originalName: name,
-        sortKey: getSemesterOrderKey(name),
-        courses: [],
-        gpa: 0, percentage: 0, totalCreditHours: 0, totalMarksObtained: 0, totalMaxMarks: 0, totalQualityPoints: 0,
-        isForecast: true
-    };
-    saveProfile(newProfile);
+  const fetchAttendance = async () => {
+    if(!activeProfile) return;
+    setIsLoading(true);
+    try {
+        const res = await fetch(`/api/result-scraper?action=scrape_attendance&registrationNumber=${activeProfile.studentInfo.registration}`);
+        const data = await res.json();
+        if(data.success) {
+            // Deduplicate against existing LMS courses
+            const existingCodes = new Set<string>();
+            Object.values(activeProfile.semesters).forEach(s => 
+                s.courses.forEach(c => existingCodes.add(c.code))
+            );
+            
+            const newCourses = data.resultData.filter((c: any) => !existingCodes.has(c.CourseCode));
+            setAttendanceCourses(newCourses);
+            setShowAttendanceModal(true);
+        } else {
+            alert("No attendance records found.");
+        }
+    } catch {
+        alert("Failed to fetch attendance.");
+    } finally {
+        setIsLoading(false);
+    }
   };
 
-  const handleExportPDF = () => {
-    if (!activeProfile) return;
-    const summary = calculateCGPA(activeProfile);
-    const doc = new jsPDF();
-    
-    doc.setFillColor(124, 58, 237);
-    doc.rect(0, 0, 210, 15, 'F');
-    doc.setFontSize(20);
-    doc.setTextColor(124, 58, 237);
-    doc.text("Official Academic Transcript", 14, 30);
-    
-    doc.setFontSize(10);
-    doc.setTextColor(150);
-    doc.text(`Student: ${activeProfile.studentInfo.name}`, 14, 45);
-    doc.text(`Registration: ${activeProfile.studentInfo.registration}`, 14, 51);
-    doc.text(`CGPA: ${summary.cgpa.toFixed(4)}`, 14, 57);
-
-    let finalY = 70;
-    (Object.values(activeProfile.semesters) as Semester[])
-      .sort((a, b) => a.sortKey.localeCompare(b.sortKey))
-      .forEach(sem => {
-        if(finalY > 260) { doc.addPage(); finalY = 20; }
-        doc.setFontSize(12);
-        doc.setTextColor(50);
-        doc.text(sem.originalName, 14, finalY);
-        
-        const tableBody = sem.courses.map(c => [c.code, c.title, c.creditHours, c.marks, c.grade]);
-        autoTable(doc, {
-            startY: finalY + 3,
-            head: [['Code', 'Course Title', 'CH', 'Marks', 'Grade']],
-            body: tableBody,
-            theme: 'grid',
-            headStyles: { fillColor: [124, 58, 237], fontSize: 9 },
-            styles: { fontSize: 8 },
-            margin: { left: 14, right: 14 }
-        });
-        finalY = (doc as any).lastAutoTable.finalY + 12;
-      });
-
-    doc.save(`${activeProfile.studentInfo.registration}_Transcript.pdf`);
+  const importAttendance = (selectedCourses: any[]) => {
+     if(!activeProfile) return;
+     const updated = { ...activeProfile };
+     
+     selectedCourses.forEach(att => {
+         // Create or find semester
+         const semName = att.Semester;
+         if(!updated.semesters[semName]) {
+             updated.semesters[semName] = {
+                 originalName: semName,
+                 sortKey: getSemesterOrderKey(semName),
+                 courses: [],
+                 // ... init zeros
+                 gpa:0, percentage:0, totalCreditHours:0, totalMarksObtained:0, totalMaxMarks:0, totalQualityPoints:0
+             };
+         }
+         
+         const newCourse: Course = {
+             code: att.CourseCode,
+             title: att.CourseName,
+             creditHours: 3, // Default, user can edit later
+             marks: parseFloat(att.Totalmark),
+             grade: att.Grade,
+             qualityPoints: 0, // Recalculated by saveProfile
+             isCustom: true,
+             source: 'attendance',
+             isDeleted: false, isExtraEnrolled: false, isRepeated: false,
+             creditHoursDisplay: '3'
+         };
+         updated.semesters[semName].courses.push(newCourse);
+     });
+     
+     saveProfile(updated);
+     setShowAttendanceModal(false);
   };
 
-  // SEARCH VIEW (When no profile is active)
+  const handleDownloadPDF = () => {
+     if(!activeProfile) return;
+     // Trigger the Python download handler for Android compatibility
+     const form = document.createElement('form');
+     form.method = 'POST';
+     form.action = '/api/download'; // Matches our python script
+     form.style.display = 'none';
+
+     // Generate PDF Blob using jsPDF
+     const doc = new jsPDF();
+     doc.text(`Transcript: ${activeProfile.studentInfo.name}`, 10, 10);
+     
+     // ... (Your PDF generation logic here) ...
+     const pdfBlob = doc.output('blob');
+     
+     const reader = new FileReader();
+     reader.readAsDataURL(pdfBlob);
+     reader.onloadend = () => {
+         const inputName = document.createElement('input');
+         inputName.name = 'filename';
+         inputName.value = `Transcript_${activeProfile.studentInfo.registration}.pdf`;
+         
+         const inputData = document.createElement('input');
+         inputData.name = 'fileData';
+         inputData.value = reader.result as string;
+
+         form.appendChild(inputName);
+         form.appendChild(inputData);
+         document.body.appendChild(form);
+         form.submit();
+         document.body.removeChild(form);
+     };
+  };
+
   if (!activeProfile) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center px-6 pt-20 pb-24 bg-slate-50 dark:bg-slate-950">
-        <div className="max-w-xl w-full text-center space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-          <div className="w-16 h-16 md:w-20 md:h-20 bg-brand-600 rounded-[2rem] flex items-center justify-center mx-auto text-white shadow-2xl rotate-3">
-            <Search size={32} />
-          </div>
-          
-          <div className="space-y-3">
-            <h1 className="text-2xl md:text-4xl font-black text-slate-900 dark:text-white tracking-tight">Academic Workspace</h1>
-            <p className="text-[13px] md:text-base text-slate-500 dark:text-slate-400 font-medium leading-relaxed max-w-md mx-auto">
-              Ready to sync? Enter your registration number to retrieve your verified record from the UAF LMS server.
-            </p>
-          </div>
-          
-          <form onSubmit={handleFetch} className="relative w-full">
-            <div className="relative flex flex-col sm:flex-row items-stretch sm:items-center bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 p-2 rounded-[1.5rem] md:rounded-[2.5rem] shadow-xl focus-within:border-brand-500 transition-all">
-              <input
-                type="text"
-                placeholder="e.g. 2021-ag-1234"
-                value={regNum}
-                onChange={(e) => setRegNum(e.target.value)}
-                className="w-full bg-transparent border-none outline-none px-5 py-3 md:py-4 text-base md:text-xl font-black text-slate-900 dark:text-white placeholder-slate-300"
-              />
-              <Button type="submit" disabled={isLoading || !regNum} className="px-10 py-3 md:py-4 rounded-[1.25rem] md:rounded-[1.75rem] text-sm md:text-base font-black shrink-0 shadow-lg">
-                {isLoading ? <Loader2 className="animate-spin h-5 w-5" /> : 'Fetch Record'}
-              </Button>
-            </div>
-            {error && <p className="mt-4 text-red-500 font-bold text-xs bg-red-50 dark:bg-red-900/10 inline-block px-4 py-1.5 rounded-full">{error}</p>}
-          </form>
+     return (
+        <div className="flex flex-col items-center justify-center min-h-[60vh] p-4">
+             {/* RESTRICTED ACCESS MODAL */}
+             {showPassModal && (
+                 <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+                     <div className="bg-white p-6 rounded-xl w-full max-w-sm">
+                         <h3 className="text-xl font-bold mb-4 flex items-center"><Lock className="mr-2"/> Restricted Access</h3>
+                         <input type="password" value={passKey} onChange={e => setPassKey(e.target.value)} 
+                                className="w-full border p-2 rounded mb-4" placeholder="Enter Pass Key" />
+                         <Button onClick={verifyPassKey} className="w-full">Unlock</Button>
+                     </div>
+                 </div>
+             )}
 
-          <div className="flex justify-center gap-3 pt-6">
-             <Button variant="ghost" size="sm" onClick={() => navigate('/profiles')} className="text-slate-400 hover:text-brand-600 font-bold px-6 py-2.5 bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800">
-               <History className="w-4 h-4 mr-2" /> View Saved Profiles
-             </Button>
-          </div>
+             <div className="w-full max-w-md space-y-4">
+                 <h1 className="text-3xl font-black text-center text-slate-800">UAF Calculator</h1>
+                 <form onSubmit={handleSearch} className="relative">
+                     <input value={regNum} onChange={e => setRegNum(e.target.value)} 
+                            className="w-full p-4 rounded-full border-2 border-slate-200 text-xl font-bold text-center"
+                            placeholder="2020-ag-1234" />
+                     <Button type="submit" className="absolute right-2 top-2 bottom-2 rounded-full px-6" disabled={isLoading}>
+                        {isLoading ? <Loader2 className="animate-spin"/> : 'Fetch'}
+                     </Button>
+                 </form>
+             </div>
         </div>
-      </div>
-    );
+     );
   }
 
-  // ACTIVE DASHBOARD VIEW
-  const summary = calculateCGPA(activeProfile);
-  const chartData = (Object.values(activeProfile.semesters) as Semester[])
-    .sort((a, b) => a.sortKey.localeCompare(b.sortKey))
-    .map(sem => ({
-      name: sem.originalName.replace('Semester', '').trim(),
-      gpa: sem.gpa
-    }));
+  // Filter Logic for B.Ed Tabs
+  const filteredSemesters = activeProfile.bedMode 
+     ? Object.values(activeProfile.semesters).map(s => ({
+         ...s,
+         courses: s.courses.filter(c => 
+             activeTab === 'bed' ? BED_COURSES.has(c.code) : !BED_COURSES.has(c.code)
+         )
+     })).filter(s => s.courses.length > 0)
+     : Object.values(activeProfile.semesters);
+
+  // Re-calculate summary just for the filtered view
+  const displayProfile = { ...activeProfile, semesters: {} as any };
+  filteredSemesters.forEach(s => displayProfile.semesters[s.originalName] = s);
+  const summary = calculateCGPA(displayProfile);
 
   return (
-    <div className="pt-24 pb-28 px-4 max-w-7xl mx-auto space-y-6 md:space-y-10 animate-in fade-in duration-700">
-      
-      {/* PROFESSIONAL HEADER */}
-      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 bg-white dark:bg-slate-900 p-6 md:p-8 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-32 h-32 bg-brand-500/5 blur-3xl pointer-events-none"></div>
-        <div className="flex items-center gap-4 md:gap-6 relative z-10">
-          <div className="w-14 h-14 md:w-16 md:h-16 bg-gradient-to-br from-brand-500 to-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-xl shrink-0 rotate-3">
-             <Sparkles size={28} />
-          </div>
-          <div className="min-w-0">
-              <h1 className="text-lg md:text-3xl font-black text-slate-900 dark:text-white truncate">
-                {activeProfile.studentInfo.name}
-              </h1>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="px-2 py-0.5 bg-brand-50 dark:bg-brand-900/30 text-brand-700 dark:text-brand-400 rounded-lg text-[10px] md:text-xs font-black font-mono tracking-wider">
-                  {activeProfile.studentInfo.registration}
-                </span>
-                <span className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-widest hidden sm:block">
-                  Verified Result
-                </span>
-              </div>
-          </div>
+    <div className="max-w-7xl mx-auto p-4 space-y-6">
+        {/* HEADER & TABS */}
+        <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-6 rounded-3xl shadow-sm border">
+             <div>
+                 <h1 className="text-2xl font-black">{activeProfile.studentInfo.name}</h1>
+                 <div className="text-sm font-mono text-slate-500">{activeProfile.studentInfo.registration}</div>
+             </div>
+             <div className="flex gap-2">
+                 <Button variant="secondary" onClick={fetchAttendance}><Sparkles className="w-4 h-4 mr-2"/> Attendance</Button>
+                 <Button variant="primary" onClick={handleDownloadPDF}><Download className="w-4 h-4 mr-2"/> PDF</Button>
+                 <Button variant="outline" onClick={() => setActiveProfile(null)}><RefreshCcw className="w-4 h-4"/></Button>
+             </div>
         </div>
 
-        <div className="flex flex-wrap gap-2 w-full lg:w-auto relative z-10">
-            <Button variant="secondary" onClick={() => setShowChart(!showChart)} className="flex-1 lg:flex-none text-[11px] md:text-sm py-3 px-4 rounded-xl font-bold">
-                <LineChart className="w-4 h-4 mr-2" /> Trend
-            </Button>
-            <Button variant="secondary" onClick={handleExportPDF} className="flex-1 lg:flex-none text-[11px] md:text-sm py-3 px-4 rounded-xl font-bold">
-                <Download className="w-4 h-4 mr-2" /> Export PDF
-            </Button>
-            <Button variant="primary" onClick={() => setActiveProfile(null)} className="flex-1 lg:flex-none text-[11px] md:text-sm py-3 px-4 rounded-xl font-bold">
-                <RefreshCcw className="w-4 h-4 mr-2" /> New Search
-            </Button>
-        </div>
-      </div>
+        {activeProfile.bedMode && (
+            <div className="flex gap-4 border-b">
+                <button onClick={() => setActiveTab('normal')} className={`pb-2 font-bold ${activeTab==='normal' ? 'border-b-2 border-brand-500 text-brand-600' : 'text-slate-400'}`}>BS/MSc</button>
+                <button onClick={() => setActiveTab('bed')} className={`pb-2 font-bold ${activeTab==='bed' ? 'border-b-2 border-brand-500 text-brand-600' : 'text-slate-400'}`}>B.Ed</button>
+            </div>
+        )}
 
-      <div className="grid lg:grid-cols-3 gap-6 md:gap-10">
-        {/* LEFT COLUMN: ANALYTICS */}
-        <div className="lg:col-span-1 space-y-6 md:space-y-8">
-            <CgpaDial summary={summary} />
-            
-            {showChart && (
-                <div className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-200 dark:border-slate-800 h-[320px] animate-in zoom-in-95">
-                    <div className="flex items-center justify-between mb-6 px-1">
-                        <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Performance Over Time</h3>
-                        <TrendingUp size={14} className="text-slate-400" />
+        <div className="grid lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-1">
+                <CgpaDial summary={summary} />
+            </div>
+            <div className="lg:col-span-2">
+                <SemesterList 
+                    profile={{...activeProfile, semesters: displayProfile.semesters}} 
+                    onUpdate={(p) => {
+                        // Merge updates back into main profile
+                        const merged = { ...activeProfile };
+                        Object.assign(merged.semesters, p.semesters);
+                        saveProfile(merged);
+                    }} 
+                />
+            </div>
+        </div>
+
+        {/* ATTENDANCE MODAL */}
+        {showAttendanceModal && (
+            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-2xl p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto">
+                    <h2 className="text-xl font-bold mb-4">Import Attendance Courses</h2>
+                    {attendanceCourses.length === 0 ? (
+                        <p>No new courses found.</p>
+                    ) : (
+                        <div className="space-y-2">
+                            {attendanceCourses.map((c, i) => (
+                                <div key={i} className="flex items-center justify-between p-3 border rounded-lg hover:bg-slate-50">
+                                    <div>
+                                        <div className="font-bold">{c.CourseCode}</div>
+                                        <div className="text-xs text-slate-500">{c.CourseName}</div>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <span className="text-sm font-mono bg-slate-100 px-2 rounded">
+                                            {c.Totalmark} | {c.Grade}
+                                        </span>
+                                        <Button size="sm" onClick={() => importAttendance([c])}>Import</Button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                    <div className="mt-6 text-right">
+                        <Button variant="secondary" onClick={() => setShowAttendanceModal(false)}>Close</Button>
                     </div>
-                    <ResponsiveContainer width="100%" height="80%">
-                        <RechartsLine data={chartData}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" opacity={0.4} />
-                            <XAxis dataKey="name" hide />
-                            <YAxis domain={[0, 4]} axisLine={false} tickLine={false} fontSize={10} fontWeight="bold" />
-                            <Tooltip 
-                              contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', fontSize: '12px' }} 
-                              cursor={{ stroke: '#8b5cf6', strokeWidth: 1.5 }}
-                            />
-                            <Line 
-                              type="monotone" 
-                              dataKey="gpa" 
-                              stroke="#8b5cf6" 
-                              strokeWidth={4} 
-                              dot={{r:5, fill: '#8b5cf6', strokeWidth: 2, stroke: '#fff'}} 
-                              activeDot={{r:7}}
-                            />
-                        </RechartsLine>
-                    </ResponsiveContainer>
-                </div>
-            )}
-
-            <div className="p-6 md:p-8 bg-brand-600 rounded-[2rem] text-white shadow-xl relative overflow-hidden group">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 blur-2xl rounded-full translate-x-10 -translate-y-10 group-hover:scale-125 transition-transform duration-700"></div>
-              <h3 className="font-black text-lg mb-2">Goal Simulation</h3>
-              <p className="text-white/70 text-xs leading-relaxed mb-6 font-medium">Add a virtual semester to analyze target marks and their impact on graduation standing.</p>
-              <Button onClick={handleAddForecast} variant="secondary" className="w-full py-3.5 rounded-xl justify-between bg-white/10 border-white/20 text-white hover:bg-white hover:text-brand-600 transition-all font-black text-xs md:text-sm">
-                  Add Forecast Semester
-                  <Plus className="w-5 h-5" />
-              </Button>
-            </div>
-
-            <div className="p-6 bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-800">
-                <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4 px-1">Workspace Utility</h3>
-                <div className="space-y-1">
-                   <ControlOption icon={<Settings2 size={16} />} label="Grade Settings" />
                 </div>
             </div>
-        </div>
-
-        {/* RIGHT COLUMN: DETAILED DATA */}
-        <div className="lg:col-span-2">
-            <h2 className="text-xl md:text-2xl font-black text-slate-900 dark:text-white mb-6 flex items-center gap-3 px-1">
-              Semester Log
-              <span className="text-[9px] font-bold bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-full text-slate-500 uppercase tracking-widest">
-                {Object.keys(activeProfile.semesters).length} Terms Saved
-              </span>
-            </h2>
-            <SemesterList profile={activeProfile} onUpdate={saveProfile} />
-        </div>
-      </div>
+        )}
     </div>
   );
 };
-
-const ControlOption = ({ icon, label }: { icon: React.ReactNode, label: string }) => (
-    <div className="flex items-center justify-between p-3.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer border border-transparent hover:border-slate-100 dark:hover:border-slate-700 transition-all group">
-        <div className="flex items-center gap-3">
-           <div className="text-slate-400 group-hover:text-brand-600 transition-colors">{icon}</div>
-           <span className="font-bold text-xs md:text-sm text-slate-700 dark:text-slate-200">{label}</span>
-        </div>
-        <ArrowLeft className="w-3.5 h-3.5 text-slate-300 rotate-180 group-hover:translate-x-1 transition-transform" />
-    </div>
-);
