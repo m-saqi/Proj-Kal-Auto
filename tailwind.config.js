@@ -2,11 +2,12 @@
 export default {
   content: [
     "./index.html",
-    "./*.{js,ts,jsx,tsx}",           // Matches App.tsx, index.tsx in root
-    "./pages/**/*.{js,ts,jsx,tsx}",      // Matches files in pages folder
-    "./components/**/*.{js,ts,jsx,tsx}", // Matches files in components folder
-    "./context/**/*.{js,ts,jsx,tsx}",    // Matches files in context folder
+    "./*.{js,ts,jsx,tsx}",
+    "./pages/**/*.{js,ts,jsx,tsx}",
+    "./components/**/*.{js,ts,jsx,tsx}",
+    "./context/**/*.{js,ts,jsx,tsx}",
   ],
+  darkMode: 'class', // <--- CRITICAL FIX for Dark Mode
   theme: {
     extend: {
       fontFamily: {
