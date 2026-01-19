@@ -1,41 +1,37 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
-import { ShieldCheck, Zap, BookOpen, GraduationCap, CheckCircle2, AlertCircle } from 'lucide-react';
+import { ShieldCheck, Zap, BookOpen, GraduationCap, CheckCircle2, AlertCircle, ArrowRight } from 'lucide-react';
 
 export const Home = () => {
   return (
-    <div className="space-y-16 pb-12">
+    <div className="space-y-20 pb-12">
       {/* Hero Section */}
-      <section className="relative pt-20 pb-32 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-b from-brand-50 to-white -z-10" />
-        <div className="max-w-4xl mx-auto text-center px-4 space-y-6">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-100 text-brand-700 text-sm font-semibold mb-4 animate-fade-in-up">
-            <span className="relative flex h-2 w-2">
+      <section className="relative pt-24 pb-32 overflow-hidden">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-brand-50 via-white to-white -z-10" />
+        
+        <div className="max-w-5xl mx-auto text-center px-4 space-y-8 animate-slide-up">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white border border-brand-100 text-brand-700 text-sm font-semibold shadow-sm mb-4">
+            <span className="relative flex h-2.5 w-2.5">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-brand-500"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-brand-500"></span>
             </span>
             Live LMS Integration
           </div>
           
-          <h1 className="text-5xl md:text-7xl font-black text-slate-900 tracking-tight leading-tight">
-            UAF <span className="text-brand-600">CGPA</span> Calculator
+          <h1 className="text-5xl md:text-7xl font-serif font-black text-slate-900 tracking-tight leading-[1.1]">
+            Accurate <span className="text-brand-600">UAF CGPA</span> <br/> Calculator
           </h1>
           
-          <p className="text-xl text-slate-600 max-w-2xl mx-auto leading-relaxed">
-            The most accurate, automatic, and secure calculator for UAF students. 
-            Fetches your results directly from the LMS and Attendance system.
+          <p className="text-xl md:text-2xl text-slate-600 max-w-2xl mx-auto leading-relaxed font-light">
+            Stop calculating manually. Fetch your exact results from UAF LMS & Attendance System in seconds.
           </p>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-6">
             <Link to="/calculator">
-              <Button size="lg" className="h-14 px-8 text-lg rounded-full shadow-xl shadow-brand-500/20 hover:shadow-brand-500/40 transition-all">
-                Calculate Now
-              </Button>
-            </Link>
-            <Link to="/about">
-              <Button variant="outline" size="lg" className="h-14 px-8 text-lg rounded-full border-2">
-                Learn More
+              <Button size="lg" className="h-16 px-10 text-xl rounded-full shadow-xl shadow-brand-500/20 hover:shadow-brand-500/40 transition-all hover:-translate-y-1">
+                Check Result
+                <ArrowRight className="ml-2 w-5 h-5"/>
               </Button>
             </Link>
           </div>
@@ -48,63 +44,53 @@ export const Home = () => {
           <FeatureCard 
             icon={<Zap className="w-8 h-8 text-yellow-500" />}
             title="Automatic Fetching"
-            desc="No manual entry needed. Just enter your AG number and password (if required) to get instant results."
+            desc="No manual entry. Just enter your Registration Number to pull data directly from UAF servers."
           />
           <FeatureCard 
             icon={<ShieldCheck className="w-8 h-8 text-brand-500" />}
             title="100% Secure"
-            desc="Your data is processed locally or via secure proxy. We never store your passwords."
+            desc="We use a secure proxy. Your password (if used) is never stored on our servers."
           />
           <FeatureCard 
             icon={<GraduationCap className="w-8 h-8 text-blue-500" />}
-            title="Accurate Logic"
-            desc="Uses the official UAF grading formula, including the complex linear interpolation for quality points."
+            title="Official Formula"
+            desc="Uses UAF's exact linear interpolation formula for marks-to-GPA conversion."
           />
         </div>
       </section>
 
-      {/* Info Section (Ported from old index.html) */}
+      {/* Info Section - Ported from old HTML */}
       <section className="max-w-4xl mx-auto px-4 space-y-12">
-        <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
-          <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
-            <AlertCircle className="text-brand-500"/> Why use this tool?
+        <div className="bg-white p-10 rounded-3xl shadow-lg border border-slate-100">
+          <h2 className="text-3xl font-serif font-bold mb-6 flex items-center gap-3 text-slate-800">
+            <AlertCircle className="text-brand-500 w-8 h-8"/> Why use this tool?
           </h2>
-          <div className="prose text-slate-600">
-            <p className="mb-4">
-              Calculating GPA manually is difficult because UAF uses a specific formula where marks are interpolated. 
+          <div className="prose prose-lg text-slate-600 leading-loose">
+            <p className="mb-6">
+              Calculating GPA manually is prone to errors because UAF uses a specific 
+              <strong> Linear Interpolation</strong> method. 
               For example, 48 marks in a 3-credit course is a 2.66 GPA, but 49 marks is 2.75. 
-              This tool handles all that math for you automatically.
+              Standard calculators miss these details.
             </p>
-            <ul className="space-y-2 mt-4">
-              <li className="flex items-start gap-2">
-                <CheckCircle2 className="w-5 h-5 text-brand-500 shrink-0 mt-0.5"/>
-                <span>Supports BS, MSc, M.Phil, and PhD calculations.</span>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <li className="flex items-start gap-3 bg-slate-50 p-3 rounded-lg">
+                <CheckCircle2 className="w-5 h-5 text-brand-500 shrink-0 mt-1"/>
+                <span>Supports BS, MSc, M.Phil, PhD</span>
               </li>
-              <li className="flex items-start gap-2">
-                <CheckCircle2 className="w-5 h-5 text-brand-500 shrink-0 mt-0.5"/>
-                <span><b>B.Ed Mode:</b> Separate logic for Education courses.</span>
+              <li className="flex items-start gap-3 bg-slate-50 p-3 rounded-lg">
+                <CheckCircle2 className="w-5 h-5 text-brand-500 shrink-0 mt-1"/>
+                <span><strong>B.Ed Mode:</strong> Separate Education logic</span>
               </li>
-              <li className="flex items-start gap-2">
-                <CheckCircle2 className="w-5 h-5 text-brand-500 shrink-0 mt-0.5"/>
-                <span><b>Forecast Feature:</b> Predict your future CGPA by adding hypothetical semesters.</span>
+              <li className="flex items-start gap-3 bg-slate-50 p-3 rounded-lg">
+                <CheckCircle2 className="w-5 h-5 text-brand-500 shrink-0 mt-1"/>
+                <span><strong>Forecast:</strong> Add hypothetical semesters</span>
               </li>
-            </ul>
-          </div>
-        </div>
-
-        <div className="bg-slate-900 text-white p-8 rounded-3xl shadow-xl overflow-hidden relative">
-          <div className="relative z-10">
-            <h2 className="text-2xl font-bold mb-6">How to use?</h2>
-            <div className="grid gap-6 md:grid-cols-2">
-              <Step number="1" text="Enter your Registration Number (e.g., 2020-ag-1234)." />
-              <Step number="2" text="Click 'Fetch Result'. If it's your first time, it might take a few seconds." />
-              <Step number="3" text="View your detailed transcript, semester GPA, and total CGPA." />
-              <Step number="4" text="Click 'Attendance' to fetch your attendance records automatically." />
+              <li className="flex items-start gap-3 bg-slate-50 p-3 rounded-lg">
+                <CheckCircle2 className="w-5 h-5 text-brand-500 shrink-0 mt-1"/>
+                <span><strong>Attendance:</strong> Check subject-wise attendance</span>
+              </li>
             </div>
           </div>
-          {/* Decorative circles */}
-          <div className="absolute top-0 right-0 -mt-10 -mr-10 w-64 h-64 bg-brand-500 rounded-full opacity-20 blur-3xl"></div>
-          <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-64 h-64 bg-blue-500 rounded-full opacity-20 blur-3xl"></div>
         </div>
       </section>
     </div>
@@ -112,20 +98,11 @@ export const Home = () => {
 };
 
 const FeatureCard = ({ icon, title, desc }: { icon: any, title: string, desc: string }) => (
-  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
-    <div className="bg-slate-50 w-16 h-16 rounded-xl flex items-center justify-center mb-4">
+  <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 hover:shadow-xl hover:border-brand-100 transition-all duration-300 group">
+    <div className="bg-slate-50 w-16 h-16 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-brand-50 transition-colors">
       {icon}
     </div>
-    <h3 className="text-xl font-bold text-slate-900 mb-2">{title}</h3>
+    <h3 className="text-xl font-serif font-bold text-slate-900 mb-3">{title}</h3>
     <p className="text-slate-500 leading-relaxed">{desc}</p>
-  </div>
-);
-
-const Step = ({ number, text }: { number: string, text: string }) => (
-  <div className="flex gap-4">
-    <span className="flex-shrink-0 w-8 h-8 rounded-full bg-brand-500 text-white font-bold flex items-center justify-center">
-      {number}
-    </span>
-    <p className="text-slate-300">{text}</p>
   </div>
 );
