@@ -7,7 +7,7 @@ import urllib3
 import re
 from urllib.parse import parse_qs, urlparse
 
-# Suppress SSL warnings (Required for UAF's older server config)
+# Suppress SSL warnings for UAF legacy servers
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 USER_AGENTS = [
@@ -52,8 +52,10 @@ class handler(BaseHTTPRequestHandler):
                 self.send_json(400, False, 'Registration number is required')
                 return
 
-            # Default to single result scrape
-            self.scrape_single(reg_num)
+            if action == 'scrape_attendance':
+                self.scrape_attendance(reg_num)
+            else:
+                self.scrape_single(reg_num)
 
         except Exception as e:
             self.send_json(500, False, str(e))
@@ -69,26 +71,33 @@ class handler(BaseHTTPRequestHandler):
 
     def check_status(self):
         lms_status = 'offline'
+        attnd_status = 'offline'
         try:
             r = requests.head('https://lms.uaf.edu.pk/login/index.php', timeout=3, verify=False)
             if r.status_code < 500: lms_status = 'online'
         except: pass
-        self.send_json(200, True, 'Status Checked', {'lms_status': lms_status})
+        
+        try:
+            r = requests.get('http://121.52.152.24/default.aspx', timeout=3)
+            if r.status_code < 500: attnd_status = 'online'
+        except: pass
+
+        self.send_json(200, True, 'Status Checked', {'lms_status': lms_status, 'attnd_status': attnd_status})
 
     def scrape_single(self, reg_num):
         session = requests.Session()
         session.headers.update({'User-Agent': random.choice(USER_AGENTS)})
         
         try:
-            # 1. Connect & Get Token
-            resp = session.get('https://lms.uaf.edu.pk/login/index.php', timeout=8, verify=False)
+            # 1. Connect
+            resp = session.get('https://lms.uaf.edu.pk/login/index.php', timeout=5, verify=False)
             token = self.extract_token(resp.text)
             if not token:
-                raise Exception("Could not retrieve security token from LMS")
+                raise Exception("Security token not found")
 
-            # 2. Fetch Result
+            # 2. Fetch
             payload = {'token': token, 'Register': reg_num}
-            res = session.post('https://lms.uaf.edu.pk/course/uaf_student_result.php', data=payload, verify=False, timeout=15)
+            res = session.post('https://lms.uaf.edu.pk/course/uaf_student_result.php', data=payload, verify=False)
             
             if "No Result Found" in res.text or "No Records" in res.text:
                 self.send_json(404, False, "No results found for this ID")
@@ -97,7 +106,35 @@ class handler(BaseHTTPRequestHandler):
             data = self.parse_lms_html(res.text, reg_num)
             self.send_json(200, True, "Fetched", {'resultData': data})
         except Exception as e:
-            self.send_json(500, False, f"LMS Connection Error: {str(e)}")
+            self.send_json(500, False, f"Scraping Error: {str(e)}")
+
+    def scrape_attendance(self, reg_num):
+        try:
+            url = "http://121.52.152.24/default.aspx"
+            s = requests.Session()
+            r = s.get(url, timeout=10)
+            soup = BeautifulSoup(r.text, 'html.parser')
+            
+            viewstate = soup.find('input', {'id': '__VIEWSTATE'})['value']
+            eventval = soup.find('input', {'id': '__EVENTVALIDATION'})['value']
+            
+            payload = {
+                '__VIEWSTATE': viewstate,
+                '__EVENTVALIDATION': eventval,
+                'ctl00$Main$txtReg': reg_num,
+                'ctl00$Main$btnShow': 'Access To Student Information'
+            }
+            
+            r_post = s.post(url, data=payload, timeout=20)
+            data = self.parse_attendance_html(r_post.text)
+            
+            if not data:
+                self.send_json(404, False, "No attendance records found")
+            else:
+                self.send_json(200, True, "Fetched", {'resultData': data})
+
+        except Exception as e:
+            self.send_json(500, False, f"Attendance Error: {str(e)}")
 
     def extract_token(self, html):
         match = re.search(r"document\.getElementById\('token'\)\.value\s*=\s*'([^']+)'", html)
@@ -110,38 +147,51 @@ class handler(BaseHTTPRequestHandler):
         soup = BeautifulSoup(html, 'html.parser')
         results = []
         
-        # Extract Student Name dynamically
+        # Extract Name Logic
         student_name = "Unknown"
-        # Try to find name in the first visible table or text block
-        for bold in soup.find_all('b'):
-            if "Student Name" in bold.text:
-                student_name = bold.next_sibling.strip() if bold.next_sibling else "Student"
-                break
-        
-        # Robust Table Parsing
+        info_table = soup.find('table')
+        if info_table:
+            txt = info_table.get_text()
+            if "Student Name" in txt:
+                parts = [t.strip() for t in txt.splitlines() if t.strip()]
+                try:
+                    idx = parts.index("Student Name :")
+                    student_name = parts[idx+1]
+                except: pass
+
         for table in soup.find_all('table'):
             rows = table.find_all('tr')
-            if not rows: continue
-            
-            # Check if this is a result table by looking for headers
-            header_text = rows[0].get_text().lower()
-            if 'semester' in header_text and 'course' in header_text:
+            if len(rows) > 1 and 'Semester' in rows[0].get_text():
                 for row in rows[1:]:
                     cols = [c.text.strip() for c in row.find_all('td')]
-                    # Ensure we have enough columns before accessing index
-                    if len(cols) >= 10: 
-                        # Map columns dynamically if possible, otherwise use standard indices
-                        # Standard UAF Result Table: 
-                        # 0:Sr, 1:Sem, 2:Teacher, 3:Code, 4:Title, 5:CH, ..., 10:Total, 11:Grade
+                    if len(cols) >= 12:
                         results.append({
-                            'StudentName': student_name.replace(":", "").strip(),
+                            'StudentName': student_name,
                             'RegistrationNo': reg_num,
                             'Semester': cols[1],
                             'TeacherName': cols[2],
                             'CourseCode': cols[3],
                             'CourseTitle': cols[4],
                             'CreditHours': cols[5],
-                            'Total': cols[10] if len(cols) > 10 else "0",
-                            'Grade': cols[11] if len(cols) > 11 else ""
+                            'Total': cols[10],
+                            'Grade': cols[11]
                         })
+        return results
+
+    def parse_attendance_html(self, html):
+        soup = BeautifulSoup(html, 'html.parser')
+        table = soup.find('table', {'id': 'ctl00_Main_TabContainer1_tbResultInformation_gvResultInformation'})
+        results = []
+        if table:
+            for row in table.find_all('tr')[1:]:
+                cols = [c.text.strip() for c in row.find_all('td')]
+                if len(cols) >= 14:
+                    results.append({
+                        'Semester': cols[3],
+                        'TeacherName': cols[4],
+                        'CourseCode': cols[5],
+                        'CourseName': cols[6],
+                        'Totalmark': cols[12],
+                        'Grade': cols[13]
+                    })
         return results
